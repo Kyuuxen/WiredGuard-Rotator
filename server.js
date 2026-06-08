@@ -271,11 +271,26 @@ async function start() {
   setInterval(fetchConfigs, 30 * 60 * 1000);
   setInterval(filterDeadConfigs, 10 * 60 * 1000);
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[SERVER] Running on port ${PORT}`);
-});
-    console.log(`[INIT] Configs loaded: ${allConfigs.length}`);
-  });
+async function start() {
+  try {
+    allConfigs = loadFromEnv();
+
+    await fetchConfigs();
+    await filterDeadConfigs();
+
+    rotationLoop();
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[SERVER] Running on port ${PORT}`);
+      console.log(`[INIT] Configs loaded: ${allConfigs.length}`);
+    });
+
+    setInterval(fetchConfigs, 30 * 60 * 1000);
+    setInterval(filterDeadConfigs, 10 * 60 * 1000);
+
+  } catch (err) {
+    console.error("[FATAL START ERROR]", err);
+  }
 }
 
 start();
