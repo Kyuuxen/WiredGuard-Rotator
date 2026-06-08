@@ -2,5 +2,10 @@
   "name": "vpn-endpoint",
   "version": "1.0.0",
   "scripts": { "start": "node server.js" },
-  "dependencies": { "express": "^4.18.0" }
+  "{
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "node-telegram-bot-api": "^0.65.1"
+  }
 }
