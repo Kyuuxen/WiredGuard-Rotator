@@ -251,26 +251,6 @@ app.get("/status", (req, res) => {
   });
 });
 
-// ── START SYSTEM ──────────────────────────────────────
-const PORT = process.env.PORT || 3000;
-
-async function start() {
-  // 1. load configs
-  allConfigs = loadFromEnv();
-
-  // 2. optional auto-fetch
-  await fetchConfigs();
-
-  // 3. remove dead servers
-  await filterDeadConfigs();
-
-  // 4. start rotation
-  rotationLoop();
-
-  // 5. periodic refresh
-  setInterval(fetchConfigs, 30 * 60 * 1000);
-  setInterval(filterDeadConfigs, 10 * 60 * 1000);
-
 async function start() {
   try {
     allConfigs = loadFromEnv();
