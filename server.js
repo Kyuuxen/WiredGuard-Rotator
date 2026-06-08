@@ -271,8 +271,9 @@ async function start() {
   setInterval(fetchConfigs, 30 * 60 * 1000);
   setInterval(filterDeadConfigs, 10 * 60 * 1000);
 
-  app.listen(PORT, () => {
-    console.log(`[SERVER] Running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[SERVER] Running on port ${PORT}`);
+});
     console.log(`[INIT] Configs loaded: ${allConfigs.length}`);
   });
 }
