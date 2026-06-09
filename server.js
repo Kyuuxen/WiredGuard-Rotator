@@ -24,62 +24,61 @@ let rotationCount = 0;
 let nextRotationAt = null;
 
 function guessCountry(hostname) {
-const map = {
-"us-": "United States",
-"jp-": "Japan",
-"sg-": "Singapore",
-"nl-": "Netherlands",
-"uk-": "United Kingdom",
-"de-": "Germany",
-"fr-": "France",
-"ca-": "Canada",
-"au-": "Australia"
-};
+  const map = {
+    "us-": "United States",
+    "jp-": "Japan",
+    "sg-": "Singapore",
+    "nl-": "Netherlands",
+    "uk-": "United Kingdom",
+    "de-": "Germany",
+    "fr-": "France",
+    "ca-": "Canada",
+    "au-": "Australia"
+  };
 
-const lower = hostname.toLowerCase();
+  const lower = hostname.toLowerCase();
 
-for (const [prefix, country] of Object.entries(map)) {
-if (lower.includes(prefix)) {
-return country;
-}
-}
+  for (const [prefix, country] of Object.entries(map)) {
+    if (lower.includes(prefix)) {
+      return country;
+    }
+  }
 
-return "Unknown";
+  return "Unknown";
 }
 
 function loadConfigs() {
-const configs = [];
-const count = parseInt(process.env.WG_CONFIG_COUNT || "0");
+  const configs = [];
+  const count = parseInt(process.env.WG_CONFIG_COUNT || "0");
 
-for (let i = 1; i <= count; i++) {
-const b64 = process.env["WG_CONFIG_${i}"];
+  for (let i = 1; i <= count; i++) {
+    // FIX 1: Was "WG_CONFIG_${i}" (plain string), must be a backtick template literal
+    const b64 = process.env[`WG_CONFIG_${i}`];
 
-if (!b64) continue;
+    if (!b64) continue;
 
-try {
-  const raw = Buffer.from(b64, "base64").toString("utf8");
+    try {
+      const raw = Buffer.from(b64, "base64").toString("utf8");
 
-  const endpointMatch =
-    raw.match(/Endpoint\s*=\s*(.+):(\d+)/i);
+      const endpointMatch = raw.match(/Endpoint\s*=\s*(.+):(\d+)/i);
 
-  const ip = endpointMatch?.[1] || `server-${i}`;
-  const port = endpointMatch?.[2] || "51820";
+      const ip = endpointMatch?.[1] || `server-${i}`;
+      const port = endpointMatch?.[2] || "51820";
 
-  configs.push({
-    raw,
-    ip,
-    port,
-    country: guessCountry(ip),
-    index: i
-  });
+      configs.push({
+        raw,
+        ip,
+        port,
+        country: guessCountry(ip),
+        index: i
+      });
 
-} catch (err) {
-  console.error(`[CONFIG ${i}] Failed to decode`);
-}
+    } catch (err) {
+      console.error(`[CONFIG ${i}] Failed to decode`);
+    }
+  }
 
-}
-
-return configs;
+  return configs;
 }
 
 // ==============================
@@ -87,17 +86,17 @@ return configs;
 // ==============================
 
 function requireToken(req, res, next) {
-const token =
-req.headers["x-secret-token"] ||
-req.query.token;
+  const token =
+    req.headers["x-secret-token"] ||
+    req.query.token;
 
-if (token !== SECRET_TOKEN) {
-return res.status(401).json({
-error: "Unauthorized"
-});
-}
+  if (token !== SECRET_TOKEN) {
+    return res.status(401).json({
+      error: "Unauthorized"
+    });
+  }
 
-next();
+  next();
 }
 
 // ==============================
@@ -105,49 +104,40 @@ next();
 // ==============================
 
 function pickRandom(exclude = null) {
-if (allConfigs.length === 0) return null;
+  if (allConfigs.length === 0) return null;
 
-let pool =
-allConfigs.filter(c => c.ip !== exclude);
+  let pool = allConfigs.filter(c => c.ip !== exclude);
 
-if (pool.length === 0) {
-pool = allConfigs;
-}
+  if (pool.length === 0) {
+    pool = allConfigs;
+  }
 
-return pool[
-Math.floor(Math.random() * pool.length)
-];
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 function rotationLoop() {
-if (allConfigs.length === 0) {
-console.log("[ROTATE] No configs loaded");
+  if (allConfigs.length === 0) {
+    console.log("[ROTATE] No configs loaded");
+    setTimeout(rotationLoop, 10000);
+    return;
+  }
 
-setTimeout(rotationLoop, 10000);
-return;
+  const previous = currentConfig?.ip || null;
+  currentConfig = pickRandom(previous);
+  rotationCount++;
 
-}
+  const delay =
+    ROTATION_MIN +
+    Math.floor(Math.random() * (ROTATION_MAX - ROTATION_MIN));
 
-const previous = currentConfig?.ip || null;
+  nextRotationAt = Date.now() + delay;
 
-currentConfig = pickRandom(previous);
+  // FIX 1 (same): Was a plain string, not a template literal
+  console.log(
+    `[ROTATE #${rotationCount}] ${currentConfig.country} -> ${currentConfig.ip}:${currentConfig.port}`
+  );
 
-rotationCount++;
-
-const delay =
-ROTATION_MIN +
-Math.floor(
-Math.random() *
-(ROTATION_MAX - ROTATION_MIN)
-);
-
-nextRotationAt = Date.now() + delay;
-
-console.log(
-"[ROTATE #${rotationCount}] ${currentConfig.country} -> ${currentConfig.ip}:${currentConfig.port}"
-);
-
-setTimeout(rotationLoop, delay);
+  setTimeout(rotationLoop, delay);
 }
 
 // ==============================
@@ -155,70 +145,53 @@ setTimeout(rotationLoop, delay);
 // ==============================
 
 app.get("/status", (req, res) => {
-res.json({
-ok: true,
-configs_loaded: allConfigs.length,
-rotation_count: rotationCount,
-current_country: currentConfig?.country || null,
-next_rotation:
-nextRotationAt
-? new Date(nextRotationAt).toISOString()
-: null
-});
+  res.json({
+    ok: true,
+    configs_loaded: allConfigs.length,
+    rotation_count: rotationCount,
+    current_country: currentConfig?.country || null,
+    next_rotation: nextRotationAt
+      ? new Date(nextRotationAt).toISOString()
+      : null
+  });
 });
 
 app.get("/endpoint", requireToken, (req, res) => {
+  if (!currentConfig) {
+    return res.status(503).json({ error: "No config loaded" });
+  }
 
-if (!currentConfig) {
-return res.status(503).json({
-error: "No config loaded"
-});
-}
-
-res.json({
-ip: currentConfig.ip,
-port: currentConfig.port,
-country: currentConfig.country,
-rotation: rotationCount,
-next_rotation:
-new Date(nextRotationAt).toISOString()
-});
+  res.json({
+    ip: currentConfig.ip,
+    port: currentConfig.port,
+    country: currentConfig.country,
+    rotation: rotationCount,
+    next_rotation: new Date(nextRotationAt).toISOString()
+  });
 });
 
 app.get("/endpoint/config", requireToken, (req, res) => {
+  if (!currentConfig) {
+    return res.status(503).json({ error: "No config loaded" });
+  }
 
-if (!currentConfig) {
-return res.status(503).json({
-error: "No config loaded"
-});
-}
-
-res.setHeader(
-"Content-Type",
-"text/plain"
-);
-
-res.send(currentConfig.raw);
+  res.setHeader("Content-Type", "text/plain");
+  res.send(currentConfig.raw);
 });
 
 app.post("/endpoint/rotate", requireToken, (req, res) => {
+  if (!allConfigs.length) {
+    return res.status(503).json({ error: "No configs available" });
+  }
 
-if (!allConfigs.length) {
-return res.status(503).json({
-error: "No configs available"
-});
-}
+  currentConfig = pickRandom(currentConfig?.ip);
+  rotationCount++;
 
-currentConfig =
-pickRandom(currentConfig?.ip);
-
-rotationCount++;
-
-res.json({
-message: "Rotated",
-ip: currentConfig.ip,
-country: currentConfig.country
-});
+  res.json({
+    message: "Rotated",
+    ip: currentConfig.ip,
+    country: currentConfig.country
+  });
 });
 
 // ==============================
@@ -226,71 +199,44 @@ country: currentConfig.country
 // ==============================
 
 if (BOT_TOKEN) {
+  const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-const bot =
-new TelegramBot(BOT_TOKEN, {
-polling: true
-});
+  console.log("[BOT] Started");
 
-console.log("[BOT] Started");
+  // FIX 2: Was //status/ (broken regex), must be /\/status/
+  bot.onText(/\/status/, msg => {
+    bot.sendMessage(
+      msg.chat.id,
+      `🟢 VPN Status\n\nConfigs: ${allConfigs.length}\nRotation: ${rotationCount}\nCountry: ${currentConfig?.country || "None"}`
+    );
+  });
 
-bot.onText(//status/, msg => {
+  // FIX 2: Was //current/ (broken regex), must be /\/current/
+  bot.onText(/\/current/, msg => {
+    if (!currentConfig) {
+      return bot.sendMessage(msg.chat.id, "No config loaded");
+    }
 
-bot.sendMessage(
-  msg.chat.id,
-  `🟢 VPN Status
+    bot.sendMessage(
+      msg.chat.id,
+      `🌍 Current VPN\n\nIP: ${currentConfig.ip}\nPort: ${currentConfig.port}\nCountry: ${currentConfig.country}`
+    );
+  });
 
-Configs: ${allConfigs.length}
-Rotation: ${rotationCount}
-Country: ${currentConfig?.country || "None"}`
-);
+  // FIX 2: Was //rotate/ (broken regex), must be /\/rotate/
+  bot.onText(/\/rotate/, msg => {
+    if (!allConfigs.length) {
+      return bot.sendMessage(msg.chat.id, "No configs available");
+    }
 
-});
+    currentConfig = pickRandom(currentConfig?.ip);
+    rotationCount++;
 
-bot.onText(//current/, msg => {
-
-if (!currentConfig) {
-  return bot.sendMessage(
-    msg.chat.id,
-    "No config loaded"
-  );
-}
-
-bot.sendMessage(
-  msg.chat.id,
-  `🌍 Current VPN
-
-IP: ${currentConfig.ip}
-Port: ${currentConfig.port}
-Country: ${currentConfig.country}`
-);
-
-});
-
-bot.onText(//rotate/, msg => {
-
-if (!allConfigs.length) {
-  return bot.sendMessage(
-    msg.chat.id,
-    "No configs available"
-  );
-}
-
-currentConfig =
-  pickRandom(currentConfig?.ip);
-
-rotationCount++;
-
-bot.sendMessage(
-  msg.chat.id,
-  `🔄 Rotated
-
-Country: ${currentConfig.country}
-IP: ${currentConfig.ip}`
-);
-
-});
-
+    bot.sendMessage(
+      msg.chat.id,
+      `🔄 Rotated\n\nCountry: ${currentConfig.country}\nIP: ${currentConfig.ip}`
+    );
+  });
 }
 
 // ==============================
@@ -299,14 +245,12 @@ IP: ${currentConfig.ip}`
 
 allConfigs = loadConfigs();
 
-console.log(
-"[INIT] Loaded ${allConfigs.length} configs"
-);
+// FIX 1 (same): Was a plain string, not a template literal
+console.log(`[INIT] Loaded ${allConfigs.length} configs`);
 
 rotationLoop();
 
 app.listen(PORT, "0.0.0.0", () => {
-console.log(
-"[SERVER] Running on port ${PORT}"
-);
+  // FIX 1 (same): Was a plain string, not a template literal
+  console.log(`[SERVER] Running on port ${PORT}`);
 });
